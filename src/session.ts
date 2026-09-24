@@ -81,6 +81,11 @@ export class EdgeeSession {
     this.pi = pi;
   }
 
+  /** False after shutdown(): background work must not touch ctx or pi then. */
+  get isActive(): boolean {
+    return this.active;
+  }
+
   reset(ctx: ExtensionContext): void {
     this.id = process.env.EDGEE_SESSION_ID?.trim() || ctx.sessionManager.getSessionId();
     this.cwd = ctx.cwd;

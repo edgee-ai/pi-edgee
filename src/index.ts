@@ -5,16 +5,18 @@ import { launchedByCli } from "./config.ts";
 import { ConsoleApi } from "./console-api.ts";
 import { currentCredential } from "./credentials.ts";
 import { staleCliProviders } from "./legacy.ts";
-import { deriveSessionName } from "./naming.ts";
+import { deriveSessionName, generateSessionName } from "./naming.ts";
 import { initialModels, registerEdgeeProvider } from "./provider.ts";
 import { formatReport } from "./report.ts";
 import { EdgeeSession } from "./session.ts";
+import { readSettings } from "./settings.ts";
 import { EdgeeStatusline } from "./statusline.ts";
 import { detectCommits, detectPullRequests } from "./tracking.ts";
 
 const REPORT_TIMEOUT_MS = 5_000;
 /** Upper bound on how long exit waits for queued metadata writes. */
 const METADATA_DRAIN_MS = 5_000;
+const NAMING_TIMEOUT_MS = 15_000;
 
 function header(headers: Record<string, string>, name: string): string | undefined {
 	const key = Object.keys(headers).find((k) => k.toLowerCase() === name);
@@ -53,12 +55,14 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 
 	pi.on("session_info_changed", (_event, ctx) => void session.flush(ctx));
 
-	// Unnamed sessions get a name from their first prompt; /name or --name still win.
-	// Fires before pi records the prompt, so any user entry means this is not the first.
+	// Unnamed sessions get a name from their first prompt, then a model-written title
+	// when enabled; /name or --name still win. Fires before pi records the prompt,
+	// so any user entry means this is not the first.
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!EdgeeSession.usesEdgee(ctx) || pi.getSessionName() || hasUserMessage(ctx)) return;
-		const name = deriveSessionName(event.prompt);
-		if (name) pi.setSessionName(name);
+		const placeholder = deriveSessionName(event.prompt);
+		if (placeholder) pi.setSessionName(placeholder);
+		void nameWithModel(pi, ctx, session, event.prompt, placeholder);
 	});
 
 	pi.on("before_provider_headers", (event, ctx) => {
@@ -119,6 +123,27 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 			// Never hold up or fail pi's exit over a report.
 		}
 	});
+}
+
+/** Replaces the placeholder name with a generated title, unless the session moved on meanwhile. */
+async function nameWithModel(
+	pi: ExtensionAPI,
+	ctx: ExtensionContext,
+	session: EdgeeSession,
+	prompt: string,
+	placeholder: string | undefined,
+): Promise<void> {
+	const sessionId = session.id;
+	try {
+		const settings = await readSettings();
+		if (settings.sessionNaming !== "model") return;
+		const name = await generateSessionName(ctx, prompt, settings, sessionId, AbortSignal.timeout(NAMING_TIMEOUT_MS));
+		// A /new, a quit, or a manual rename while the model was thinking all win over the title.
+		if (!name || !session.isActive || session.id !== sessionId || pi.getSessionName() !== placeholder) return;
+		pi.setSessionName(name);
+	} catch {
+		// The placeholder is a fine name; never surface naming failures.
+	}
 }
 
 /** Expands the abbreviated SHA from `git commit` output; falls back to it when the repo moved. */

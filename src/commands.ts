@@ -4,7 +4,18 @@ import { launchedByCli } from "./config.ts";
 import { ConsoleApi } from "./console-api.ts";
 import { currentCredential, type EdgeeCredential } from "./credentials.ts";
 import { formatReport } from "./report.ts";
-import { COMPRESSION_OPTIONS, compressionOf, keySettings, openSettingsPanel } from "./settings-panel.ts";
+import {
+	COMPRESSION_OPTIONS,
+	CURRENT_MODEL,
+	compressionOf,
+	keySettings,
+	NAMING_LABEL,
+	NAMING_MODEL_LABEL,
+	namingModelChoices,
+	openSettingsPanel,
+	type RemoteKey,
+} from "./settings-panel.ts";
+import { readSettings, writeSettings } from "./settings.ts";
 import type { EdgeeSession } from "./session.ts";
 import type { EdgeeStatusline } from "./statusline.ts";
 
@@ -12,7 +23,7 @@ const SUBCOMMANDS = [
 	{ value: "status", label: "status: login, organization, gateway and session id" },
 	{ value: "stats", label: "stats: live totals for this session" },
 	{ value: "open", label: "open: open this session in the Edgee console" },
-	{ value: "settings", label: "settings: compression options for the pi key" },
+	{ value: "settings", label: "settings: compression for the pi key and session naming" },
 ];
 
 function requireLogin(ctx: ExtensionCommandContext): EdgeeCredential | undefined {
@@ -61,28 +72,45 @@ async function openPage(pi: ExtensionAPI, ctx: ExtensionCommandContext, session:
 }
 
 async function editSettings(ctx: ExtensionCommandContext): Promise<void> {
-	const credential = requireLogin(ctx);
-	if (!credential) return;
-	const api = new ConsoleApi(credential.refresh);
-	const key = await api.getApiKey(credential.orgId, credential.apiKeyId);
-	if (!key) {
-		ctx.ui.notify("The pi key no longer exists. Run /login edgee to provision a new one.", "error");
-		return;
-	}
-	if (ctx.mode === "tui") return openSettingsPanel(ctx, api, credential, key);
-
-	// RPC clients get dialogs but no custom components: one question per option.
-	const compression = compressionOf(key);
-	for (const { field, label } of COMPRESSION_OPTIONS) {
-		const choice = await ctx.ui.select(`${label} (currently ${compression[field] ? "on" : "off"})`, ["on", "off"]);
-		if (choice === undefined) {
-			ctx.ui.notify("Edgee settings unchanged.", "info");
+	const credential = currentCredential();
+	let remote: RemoteKey | undefined;
+	if (credential) {
+		const api = new ConsoleApi(credential.refresh);
+		const key = await api.getApiKey(credential.orgId, credential.apiKeyId);
+		if (!key) {
+			ctx.ui.notify("The pi key no longer exists. Run /login edgee to provision a new one.", "error");
 			return;
 		}
-		compression[field] = choice === "on";
+		remote = { api, credential, key };
 	}
-	await api.updateApiKey(credential.orgId, credential.apiKeyId, keySettings(key, compression));
-	ctx.ui.notify("Edgee settings saved; they apply to the next request.", "info");
+	if (ctx.mode === "tui") return openSettingsPanel(ctx, remote);
+
+	// RPC clients get dialogs but no custom components: one question per option.
+	const unchanged = () => ctx.ui.notify("Edgee settings unchanged.", "info");
+	const local = { ...(await readSettings()) };
+	const naming = await ctx.ui.select(`${NAMING_LABEL} (currently ${local.sessionNaming})`, ["model", "prompt"]);
+	if (naming === undefined) return unchanged();
+	local.sessionNaming = naming === "prompt" ? "prompt" : "model";
+	if (local.sessionNaming === "model") {
+		const model = await ctx.ui.select(`${NAMING_MODEL_LABEL} (currently ${local.namingModel ?? CURRENT_MODEL})`, namingModelChoices(ctx));
+		if (model === undefined) return unchanged();
+		if (model === CURRENT_MODEL) delete local.namingModel;
+		else local.namingModel = model;
+	}
+
+	const compression = remote ? compressionOf(remote.key) : undefined;
+	if (remote && compression) {
+		for (const { field, label } of COMPRESSION_OPTIONS) {
+			const choice = await ctx.ui.select(`${label} (currently ${compression[field] ? "on" : "off"})`, ["on", "off"]);
+			if (choice === undefined) return unchanged();
+			compression[field] = choice === "on";
+		}
+	}
+	await writeSettings(local);
+	if (remote && compression) {
+		await remote.api.updateApiKey(remote.credential.orgId, remote.credential.apiKeyId, keySettings(remote.key, compression));
+	}
+	ctx.ui.notify("Edgee settings saved; they apply to the next request or new session.", "info");
 }
 
 export function registerEdgeeCommand(pi: ExtensionAPI, session: EdgeeSession, statusline: EdgeeStatusline): void {

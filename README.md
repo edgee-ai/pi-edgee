@@ -27,7 +27,7 @@ Pick a model with `/model`, or pass one on the command line. Model ids match the
 | Provider | One `edgee` provider for every gateway model. `anthropic/*` models use pi's Anthropic Messages transport and the rest use Chat Completions. Context windows, prices and reasoning levels come from the Edgee catalog. The model list is cached in `~/.pi/agent/edgee/models.json`, so startup does not wait on the network. |
 | Session id | Every Edgee request carries `x-edgee-session-id` with pi's session id. A resumed pi session continues the same Edgee session, and `/new` starts a new one. |
 | Statusline | A `三 Edgee …` line under pi's footer with tokens, gateway cost, compression savings, request count and fallback state. |
-| Session name | An unnamed session takes the first line of its first prompt as its name, cut to 60 characters. No model call is involved. The plugin sends pi's session name to Edgee, including later changes from `--name` or `/name`. |
+| Session name | An unnamed session takes the first line of its first prompt as its name right away, then a model writes a short title in the background and replaces it. The naming call goes through the gateway under the same session. `/edgee settings` turns this off (keeping the first-line name) or picks the naming model, which defaults to the current one. A name set with `--name` or `/name` is never overwritten. The plugin sends pi's session name to Edgee, including later changes. |
 | Repository | The plugin sends the git `origin` of the working directory. |
 | Pull requests and commits | When the agent runs `gh pr create/edit`, `glab mr create/update` or `git commit`, the plugin reads the PR URL or commit SHA from the output and adds it to the session. |
 | Fallback notices | pi warns once per provider when the gateway serves a request from a fallback provider. |
@@ -42,7 +42,7 @@ Session metadata goes to the Edgee session MCP endpoint. It needs `/login edgee`
 | `/edgee status` | Login, organization, gateway, session id and metadata sync state |
 | `/edgee stats` | Live totals for the current session |
 | `/edgee open` | Opens the session page in the Edgee console |
-| `/edgee settings` | Settings panel to turn tool result compression, tool surface reduction and output brevity on or off for the `pi` key. Each change saves immediately. |
+| `/edgee settings` | Settings panel to turn tool result compression, tool surface reduction and output brevity on or off for the `pi` key, and to set session naming (`model` or `prompt`) and the naming model. Naming settings are local, stored in `~/.pi/agent/edgee/settings.json`. Each change saves immediately. |
 
 ## Environment
 
