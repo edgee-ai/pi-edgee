@@ -3,6 +3,14 @@
   "version": "0.1.0",
   "description": "Connects pi to the Edgee Agent Gateway: an edgee provider with /login, a footer statusline and session metadata",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edgee-ai/pi-edgee.git"
+  },
+  "homepage": "https://github.com/edgee-ai/pi-edgee#readme",
+  "bugs": {
+    "url": "https://github.com/edgee-ai/pi-edgee/issues"
+  },
   "type": "module",
   "keywords": [
     "pi-package",
