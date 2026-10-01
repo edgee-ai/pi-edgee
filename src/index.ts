@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { cliContextError, launchHeaders, loadCliContext } from "./cli-context.ts";
 import { registerEdgeeCommand } from "./commands.ts";
 import { launchedByCli } from "./config.ts";
 import { ConsoleApi } from "./console-api.ts";
@@ -32,7 +33,10 @@ function textOf(content: { type: string; text?: string }[]): string {
 }
 
 export default async function edgee(pi: ExtensionAPI): Promise<void> {
-	registerEdgeeProvider(pi, await initialModels());
+	loadCliContext();
+	// A launch context this build cannot read must not fall back to a stored login:
+	// that would send traffic to a different account than the CLI selected.
+	if (!cliContextError()) registerEdgeeProvider(pi, await initialModels());
 
 	const session = new EdgeeSession(pi);
 	const statusline = new EdgeeStatusline(session);
@@ -42,6 +46,10 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 		session.reset(ctx);
 		statusline.reset();
 		statusline.render(ctx);
+		const contextError = cliContextError();
+		if (contextError && event.reason === "startup") {
+			ctx.ui.notify(`Edgee launch context rejected (${contextError}). Edgee models are disabled for this run.`, "error");
+		}
 		const stale = event.reason === "startup" ? staleCliProviders() : [];
 		if (stale.length > 0) {
 			ctx.ui.notify(
@@ -67,7 +75,7 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 
 	pi.on("before_provider_headers", (event, ctx) => {
 		if (!EdgeeSession.usesEdgee(ctx)) return;
-		event.headers["x-edgee-session-id"] = session.id;
+		Object.assign(event.headers, launchHeaders(session.id));
 	});
 
 	pi.on("after_provider_response", (event, ctx) => {

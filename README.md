@@ -53,7 +53,20 @@ Session metadata goes to the Edgee session MCP endpoint. It needs `/login edgee`
 | `EDGEE_CONSOLE_API_URL` | Console API URL (default `https://api.edgee.app`) |
 | `EDGEE_MCP_URL` | Session metadata endpoint (default `<console API>/mcp`) |
 | `EDGEE_MCP_INJECTION_DISABLED` | Set to `1` to stop sending session metadata |
-| `EDGEE_API_KEY`, `EDGEE_SESSION_ID` | Set by a launcher such as `edgee launch pi`. pi uses the key when nobody has run `/login edgee`, and the session id replaces pi's own. |
+| `EDGEE_API_KEY`, `EDGEE_SESSION_ID` | Set by older `edgee launch pi` releases. pi uses the key when nobody has run `/login edgee`, and the session id replaces pi's own. |
+
+## Running under `edgee launch pi`
+
+`edgee launch pi` loads this package for the run and passes the identity it selected in a child-only `EDGEE_PI_CONTEXT` variable (versioned JSON: gateway key, console token, organization, endpoints, session id and debug-log headers). While it is present:
+
+- It wins over any `/login edgee` account stored in pi, for model requests, model discovery, the footer and session metadata alike. Nothing from it is written to `auth.json` or settings, and pi's token refresh never sees it.
+- The variable and `EDGEE_API_KEY` are removed from the process environment once read, so commands the agent runs cannot see them.
+- The CLI owns the session id and the end-of-session report.
+- A context this version cannot read (for example a newer `version`) disables the Edgee models for the run and shows an error. It never falls back to a stored login.
+
+Plain `pi` is unaffected: `/login edgee` keeps working as described above. The supported contract is advertised as `edgee.cliContract` in `package.json` (currently `1`), tested against pi 0.87.x.
+
+If you installed this package yourself, keep it at `0.2.0` or newer to use it with `edgee launch pi`. The CLI skips its own copy when it finds yours.
 
 ## Development
 

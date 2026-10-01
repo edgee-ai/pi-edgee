@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { cliContext } from "./cli-context.ts";
 import { consoleUrl, EDGEE_PROVIDER_IDS, mcpDisabledByEnv, mcpUrl } from "./config.ts";
 import { currentCredential, type EdgeeCredential } from "./credentials.ts";
 
@@ -87,7 +88,7 @@ export class EdgeeSession {
   }
 
   reset(ctx: ExtensionContext): void {
-    this.id = process.env.EDGEE_SESSION_ID?.trim() || ctx.sessionManager.getSessionId();
+    this.id = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim() || ctx.sessionManager.getSessionId();
     this.cwd = ctx.cwd;
     this.active = true;
     this.hasTraffic = false;
