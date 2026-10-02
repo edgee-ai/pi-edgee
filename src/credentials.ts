@@ -1,6 +1,7 @@
 import type { OAuthCredentials } from "@earendil-works/pi-ai";
 import { readStoredCredential } from "@earendil-works/pi-coding-agent";
 
+import { cliContext, cliContextError } from "./cli-context.ts";
 import { PROVIDER_ID } from "./config.ts";
 
 /**
@@ -26,8 +27,33 @@ export function isEdgeeCredential(value: unknown): value is EdgeeCredential {
 
 let cached: EdgeeCredential | undefined;
 
-/** Latest known credential: the one pi last resolved, else what auth.json holds. */
+/** The identity `edgee launch pi` selected, shaped like a stored credential but never persisted. */
+function launchCredential(): EdgeeCredential | undefined {
+	const context = cliContext();
+	if (!context) return undefined;
+	return {
+		access: context.apiKey,
+		refresh: context.userToken,
+		// Never refreshed: the CLI owns key lifetime for the wrapped session.
+		expires: Number.MAX_SAFE_INTEGER,
+		orgId: context.orgId,
+		orgSlug: context.orgSlug,
+		orgName: context.orgName,
+		gatewayUrl: context.gatewayUrl,
+		apiKeyId: context.apiKeyId ?? "",
+		mcpDisabled: context.mcpDisabled,
+	};
+}
+
+/**
+ * Latest known credential. A wrapped launch always wins over what pi last
+ * resolved or auth.json holds, and a rejected launch context yields none rather
+ * than falling back to a stored account.
+ */
 export function currentCredential(): EdgeeCredential | undefined {
+	const launch = launchCredential();
+	if (launch) return launch;
+	if (cliContextError()) return undefined;
 	if (cached) return cached;
 	try {
 		const stored = readStoredCredential(PROVIDER_ID);
@@ -39,6 +65,7 @@ export function currentCredential(): EdgeeCredential | undefined {
 }
 
 export function rememberCredential(credential: OAuthCredentials): void {
+	if (cliContext()) return;
 	if (isEdgeeCredential(credential)) cached = credential;
 }
 

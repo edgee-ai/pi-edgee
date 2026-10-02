@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ProviderModelConfig } from "@earendil-works/pi-coding-agent";
 
 import { getApiKey, login, refreshToken } from "./auth.ts";
+import { cliContext, cliContextError } from "./cli-context.ts";
 import { gatewayUrl, PROVIDER_ID } from "./config.ts";
 import { ConsoleApi, listGatewayModelIds } from "./console-api.ts";
 import { currentCredential, type EdgeeCredential, isEdgeeCredential } from "./credentials.ts";
@@ -17,11 +18,15 @@ interface GatewayAccess {
 }
 
 /**
- * The /login credential when there is one, else the key `edgee launch pi` hands
+ * The launch context when `edgee launch pi` supplied one (even if pi resolved a
+ * stored credential), else the /login credential, else the key older CLIs hand
  * over in EDGEE_API_KEY. An explicit EDGEE_API_URL wins over the org gateway,
  * matching the CLI's precedence.
  */
 function gatewayAccess(credential: EdgeeCredential | undefined = currentCredential()): GatewayAccess | undefined {
+	const launch = cliContext();
+	if (launch) return { gatewayUrl: launch.gatewayUrl, apiKey: launch.apiKey, userToken: launch.userToken };
+	if (cliContextError()) return undefined;
 	const envKey = process.env.EDGEE_API_KEY?.trim();
 	if (credential) {
 		return { gatewayUrl: gatewayUrl(credential.gatewayUrl), apiKey: credential.access, userToken: credential.refresh };
@@ -42,15 +47,17 @@ export async function fetchModels(access: GatewayAccess, signal?: AbortSignal): 
 
 export function registerEdgeeProvider(pi: ExtensionAPI, models: ProviderModelConfig[]): void {
 	const access = gatewayAccess();
+	const launch = cliContext();
 	pi.registerProvider(PROVIDER_ID, {
 		name: "Edgee",
 		// Per-model api/baseUrl override these; the provider-level pair only
 		// satisfies registration when the model list is still empty.
 		api: "openai-completions",
 		baseUrl: `${access?.gatewayUrl ?? gatewayUrl()}/v1`,
-		// pi prefers a stored /login credential over this, so the env key only
-		// applies to `edgee launch pi` runs that never logged in here.
-		...(process.env.EDGEE_API_KEY ? { apiKey: "$EDGEE_API_KEY" } : {}),
+		// pi prefers a stored /login credential over this, so it only applies to
+		// wrapped runs that never logged in here; oauth.getApiKey below covers the rest.
+		// The literal stays in memory: extension providers are never written to disk.
+		...(launch ? { apiKey: launch.apiKey } : process.env.EDGEE_API_KEY ? { apiKey: "$EDGEE_API_KEY" } : {}),
 		models,
 		oauth: {
 			name: "Edgee",
@@ -65,8 +72,11 @@ export function registerEdgeeProvider(pi: ExtensionAPI, models: ProviderModelCon
 				}
 				return credential;
 			},
-			refreshToken,
-			getApiKey,
+			// Under a launch context, pi persists whatever refreshToken returns into auth.json, so it
+			// must never return the CLI's identity; leave any stored credential exactly as it is.
+			refreshToken: launch ? async (credentials) => credentials : refreshToken,
+			// getApiKey is not persisted, so the CLI key can safely override a stored login here.
+			getApiKey: launch ? () => launch.apiKey : getApiKey,
 		},
 		refreshModels: async (context) => {
 			const credential = isEdgeeCredential(context.credential) ? context.credential : undefined;

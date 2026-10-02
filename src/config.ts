@@ -1,3 +1,5 @@
+import { cliContext } from "./cli-context.ts";
+
 /** Provider id registered with pi, and the auth.json key its credential lives under. */
 export const PROVIDER_ID = "edgee";
 
@@ -18,17 +20,17 @@ function envUrl(name: string): string | undefined {
 
 /** Console web app, hosting the login page and session pages. */
 export function consoleUrl(): string {
-	return envUrl("EDGEE_CONSOLE_URL") ?? DEFAULT_CONSOLE_URL;
+	return cliContext()?.consoleUrl ?? envUrl("EDGEE_CONSOLE_URL") ?? DEFAULT_CONSOLE_URL;
 }
 
 /** Console REST API: organizations, keys, sessions. */
 export function consoleApiUrl(): string {
-	return envUrl("EDGEE_CONSOLE_API_URL") ?? DEFAULT_CONSOLE_API_URL;
+	return cliContext()?.consoleApiUrl ?? envUrl("EDGEE_CONSOLE_API_URL") ?? DEFAULT_CONSOLE_API_URL;
 }
 
 /** Session-metadata MCP endpoint (setSessionName, addSessionCommit, ...). */
 export function mcpUrl(): string {
-	return envUrl("EDGEE_MCP_URL") ?? `${consoleApiUrl()}/mcp`;
+	return cliContext()?.mcpUrl ?? envUrl("EDGEE_MCP_URL") ?? `${consoleApiUrl()}/mcp`;
 }
 
 /**
@@ -36,15 +38,16 @@ export function mcpUrl(): string {
  * gateway configured on the organization, then the public default.
  */
 export function gatewayUrl(orgGatewayUrl?: string | null): string {
-	return envUrl("EDGEE_API_URL") ?? orgGatewayUrl?.trim().replace(/\/+$/, "") ?? DEFAULT_GATEWAY_URL;
+	return cliContext()?.gatewayUrl ?? envUrl("EDGEE_API_URL") ?? orgGatewayUrl?.trim().replace(/\/+$/, "") ?? DEFAULT_GATEWAY_URL;
 }
 
 /**
- * True when pi was started by `edgee launch pi`: the CLI already configured the
- * gateway provider in models.json and owns the session lifecycle (id and /end).
+ * True when pi was started by `edgee launch pi`, which owns the session
+ * lifecycle (id and /end). Current CLIs pass a launch context; older ones only
+ * exported EDGEE_API_KEY and EDGEE_SESSION_ID and wrote models.json blocks.
  */
 export function launchedByCli(): boolean {
-	return Boolean(process.env.EDGEE_API_KEY && process.env.EDGEE_SESSION_ID);
+	return cliContext() !== undefined || Boolean(process.env.EDGEE_API_KEY && process.env.EDGEE_SESSION_ID);
 }
 
 export function mcpDisabledByEnv(): boolean {

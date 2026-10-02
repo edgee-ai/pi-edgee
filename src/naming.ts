@@ -1,6 +1,7 @@
 import type { Api, Model, UserMessage } from "@earendil-works/pi-ai";
 import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
 
+import { launchHeaders } from "./cli-context.ts";
 import { PROVIDER_ID } from "./config.ts";
 import type { EdgeeLocalSettings } from "./settings.ts";
 
@@ -140,7 +141,7 @@ export async function generateSessionName(
         onPayload: withTitleSchema,
         signal,
         // Direct calls skip before_provider_headers, so tag the session here to bill it to this session.
-        headers: { "x-edgee-session-id": sessionId },
+        headers: launchHeaders(sessionId),
       },
     )
     .result();
