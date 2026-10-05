@@ -1,6 +1,6 @@
 {
   "name": "pi-edgee",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Connects pi to the Edgee Agent Gateway: an edgee provider with /login, a footer statusline and session metadata",
   "license": "Apache-2.0",
   "repository": {
@@ -24,6 +24,10 @@
     "extensions": [
       "./src/index.ts"
     ]
+  },
+  "edgee": {
+    "cliContract": 1,
+    "testedPi": "0.87.1"
   },
   "scripts": {
     "check": "tsc --noEmit",
