@@ -18,6 +18,7 @@ const { CLI_CONTEXT_ENV, cliContext, cliContextError, launchHeaders, loadCliCont
 const { currentCredential, rememberCredential } = await import("../src/credentials.ts");
 const { consoleApiUrl, consoleUrl, gatewayUrl, launchedByCli, mcpUrl } = await import("../src/config.ts");
 const { registerEdgeeProvider } = await import("../src/provider.ts");
+const { ompCompanion } = await import("../src/host.ts");
 
 const SESSION_ID = "42999158-ae9f-5b44-8834-27675aacf427";
 
@@ -78,6 +79,13 @@ describe("loadCliContext", () => {
 		expect(env.EDGEE_SESSION_ID).toBe(SESSION_ID);
 	});
 
+	it("keeps the gateway key for omp, whose models.yml resolves it from the environment", () => {
+		const env = load({ ...valid, agent: "omp" }, { EDGEE_API_KEY: "ek_cli" });
+		expect(cliContext()?.agent).toBe("omp");
+		expect(env[CLI_CONTEXT_ENV]).toBeUndefined();
+		expect(env.EDGEE_API_KEY).toBe("ek_cli");
+	});
+
 	it("is a no-op for a standalone run", () => {
 		loadCliContext({});
 		expect(cliContext()).toBeUndefined();
@@ -89,6 +97,22 @@ describe("loadCliContext", () => {
 		expect(cliContext()).toBeUndefined();
 		expect(cliContextError()).toMatch(/unsupported version 9/);
 		expect(env[CLI_CONTEXT_ENV]).toBeUndefined();
+	});
+});
+
+describe("ompCompanion", () => {
+	it("is true only for a launch context from omp", () => {
+		expect(ompCompanion()).toBe(false);
+		load(valid);
+		expect(ompCompanion()).toBe(false);
+		load({ ...valid, agent: "omp" });
+		expect(ompCompanion()).toBe(true);
+	});
+
+	it("ignores an agent it does not know", () => {
+		load({ ...valid, agent: "future" });
+		expect(cliContextError()).toBeUndefined();
+		expect(cliContext()?.agent).toBeUndefined();
 	});
 });
 

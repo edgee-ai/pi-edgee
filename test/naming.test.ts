@@ -150,6 +150,11 @@ describe("generateSessionName", () => {
 		expect(payload.output_config.format).toMatchObject({ type: "json_schema", schema: { required: ["title"] } });
 	});
 
+	it("returns undefined on hosts without a direct streaming call (omp)", async () => {
+		const ctx = { model: current, modelRegistry: { find: () => undefined, hasConfiguredAuth: () => true } };
+		expect(await generateSessionName(ctx as never, "hi", { sessionNaming: "model" }, SESSION_ID)).toBeUndefined();
+	});
+
 	it("returns undefined on a failed response", async () => {
 		const { ctx } = setup({ stopReason: "error", text: "" });
 		expect(await generateSessionName(ctx, "hi", { sessionNaming: "model" }, SESSION_ID)).toBeUndefined();

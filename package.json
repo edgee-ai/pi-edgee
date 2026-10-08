@@ -1,7 +1,7 @@
 {
   "name": "pi-edgee",
-  "version": "0.2.0",
-  "description": "Connects pi to the Edgee Agent Gateway: an edgee provider with /login, a footer statusline and session metadata",
+  "version": "0.3.0",
+  "description": "Connects pi to the Edgee Agent Gateway: an edgee provider with /login, a footer statusline and session metadata. Also the statusline and session metadata companion for oh-my-pi (omp)",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
@@ -27,7 +27,8 @@
   },
   "edgee": {
     "cliContract": 1,
-    "testedPi": "0.87.1"
+    "testedPi": "0.87.1",
+    "testedOmp": "18.6.0"
   },
   "scripts": {
     "check": "tsc --noEmit",

@@ -26,6 +26,11 @@ export interface CliContext {
 	mcpUrl?: string;
 	mcpDisabled: boolean;
 	debugHeaders?: { pubkey: string; salt: string };
+	/**
+	 * Agent hosting this extension when it is not pi. `omp` is companion mode: the CLI
+	 * owns the provider (models.yml), this package only adds the statusline and session metadata.
+	 */
+	agent?: "omp";
 }
 
 type State = { status: "none" } | { status: "ok"; context: CliContext } | { status: "error"; message: string };
@@ -84,6 +89,8 @@ export function parseCliContext(raw: string): CliContext {
 		mcpUrl: value.mcpUrl === undefined || value.mcpUrl === null ? undefined : url(value.mcpUrl, "mcpUrl"),
 		mcpDisabled: value.mcpDisabled === true,
 		debugHeaders,
+		// Unknown agents are ignored so a newer CLI never turns this into a hard error.
+		agent: value.agent === "omp" ? "omp" : undefined,
 	};
 }
 
@@ -101,7 +108,9 @@ export function loadCliContext(env: NodeJS.ProcessEnv = process.env): void {
 	delete env[CLI_CONTEXT_ENV];
 	try {
 		const context = parseCliContext(raw);
-		delete env.EDGEE_API_KEY;
+		// omp resolves `EDGEE_API_KEY` from its environment on every request (models.yml
+		// references it by name), so scrubbing it there would break the provider.
+		if (context.agent !== "omp") delete env.EDGEE_API_KEY;
 		state = { status: "ok", context };
 	} catch (error) {
 		state = { status: "error", message: error instanceof Error ? error.message : "invalid context" };

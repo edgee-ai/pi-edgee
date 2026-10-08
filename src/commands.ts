@@ -1,6 +1,7 @@
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 
 import { launchedByCli } from "./config.ts";
+import { ompCompanion } from "./host.ts";
 import { ConsoleApi } from "./console-api.ts";
 import { currentCredential, type EdgeeCredential } from "./credentials.ts";
 import { formatReport } from "./report.ts";
@@ -26,9 +27,14 @@ const SUBCOMMANDS = [
 	{ value: "settings", label: "settings: compression for the pi key and session naming" },
 ];
 
+/** omp has no `/login edgee` here: the account comes from `edgee launch omp`. */
+function loginHint(): string {
+	return ompCompanion() ? "restart with `edgee launch omp`" : "run /login edgee";
+}
+
 function requireLogin(ctx: ExtensionCommandContext): EdgeeCredential | undefined {
 	const credential = currentCredential();
-	if (!credential) ctx.ui.notify("Not logged in to Edgee. Run /login edgee first.", "warning");
+	if (!credential) ctx.ui.notify(`Not logged in to Edgee. Please ${loginHint()}.`, "warning");
 	return credential;
 }
 
@@ -44,9 +50,9 @@ async function showStatus(ctx: ExtensionCommandContext, session: EdgeeSession): 
 	const lines = [
 		credential
 			? `Logged in${credential.email ? ` as ${credential.email}` : ""} · org ${credential.orgName ?? credential.orgSlug}`
-			: "Not logged in (/login edgee)",
+			: `Not logged in (${loginHint()})`,
 		`Gateway: ${credential?.gatewayUrl ?? process.env.EDGEE_API_URL ?? "not configured"}`,
-		`Mode: ${launchedByCli() ? "edgee launch pi" : "standalone"}`,
+		`Mode: ${launchedByCli() ? (ompCompanion() ? "edgee launch omp" : "edgee launch pi") : "standalone"}`,
 		`Session: ${session.id || "none"}${session.hasTraffic ? "" : " (no Edgee traffic yet)"}`,
 		`Metadata: ${metadataState(session)}`,
 	];
@@ -78,7 +84,7 @@ async function editSettings(ctx: ExtensionCommandContext): Promise<void> {
 		const api = new ConsoleApi(credential.refresh);
 		const key = await api.getApiKey(credential.orgId, credential.apiKeyId);
 		if (!key) {
-			ctx.ui.notify("The pi key no longer exists. Run /login edgee to provision a new one.", "error");
+			ctx.ui.notify(`The pi key no longer exists. Please ${loginHint()} to provision a new one.`, "error");
 			return;
 		}
 		remote = { api, credential, key };

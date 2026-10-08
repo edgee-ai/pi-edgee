@@ -68,6 +68,16 @@ Plain `pi` is unaffected: `/login edgee` keeps working as described above. The s
 
 If you installed this package yourself, keep it at `0.2.0` or newer to use it with `edgee launch pi`. The CLI skips its own copy when it finds yours.
 
+## Running under `edgee launch omp`
+
+[omp](https://github.com/can1357/oh-my-pi) (Oh My Pi) is a pi fork that loads pi extensions. `edgee launch omp` passes this package with `-e <dir>` and sets `"agent": "omp"` in the launch context. In that mode the CLI keeps owning the `edgee` provider (it writes `~/.omp/agent/models.yml`, which carries the session header and thinking levels), so the package only adds:
+
+- the `三 Edgee …` statusline (omp's hook status row; omp strips colours from it),
+- session name, repository, pull request and commit reporting,
+- `/edgee status|stats|open|settings`.
+
+It does not register a provider, `/login` or model discovery, and it leaves `EDGEE_API_KEY` in the environment because omp reads it from there on every request. The CLI prints the end-of-session report. Differences from pi: omp has no `before_provider_headers` or `model_select` event, reports `/new` and resume as `session_switch`, and gives shutdown handlers 2 s, so the metadata drain is shorter. omp titles unnamed sessions itself and drops its title once a name exists, so this package leaves the name to omp and only falls back to the first prompt if omp has not named the session 5 s after the first turn. The model-written titles of `sessionNaming: model` are skipped (omp has no direct streaming call for extensions). Tested against omp 18.6.x. Plain `omp` with `/login edgee` is not supported yet.
+
 ## Development
 
 ```sh
