@@ -5,6 +5,7 @@ import { registerEdgeeCommand } from "./commands.ts";
 import { launchedByCli } from "./config.ts";
 import { ConsoleApi } from "./console-api.ts";
 import { currentCredential } from "./credentials.ts";
+import { ompCompanion } from "./host.ts";
 import { staleCliProviders } from "./legacy.ts";
 import { deriveSessionName, generateSessionName } from "./naming.ts";
 import { initialModels, registerEdgeeProvider } from "./provider.ts";
@@ -17,7 +18,11 @@ import { detectCommits, detectPullRequests } from "./tracking.ts";
 const REPORT_TIMEOUT_MS = 5_000;
 /** Upper bound on how long exit waits for queued metadata writes. */
 const METADATA_DRAIN_MS = 5_000;
+/** omp gives shutdown handlers 2 s in total. */
+const OMP_METADATA_DRAIN_MS = 1_500;
 const NAMING_TIMEOUT_MS = 15_000;
+/** How long omp gets to title the session itself before the prompt-derived name is used. */
+const OMP_TITLE_GRACE_MS = 5_000;
 
 function header(headers: Record<string, string>, name: string): string | undefined {
 	const key = Object.keys(headers).find((k) => k.toLowerCase() === name);
@@ -36,21 +41,35 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 	loadCliContext();
 	// A launch context this build cannot read must not fall back to a stored login:
 	// that would send traffic to a different account than the CLI selected.
-	if (!cliContextError()) registerEdgeeProvider(pi, await initialModels());
+	// Under omp the CLI owns the provider (models.yml), so only the extras are added.
+	if (!cliContextError() && !ompCompanion()) registerEdgeeProvider(pi, await initialModels());
 
 	const session = new EdgeeSession(pi);
 	const statusline = new EdgeeStatusline(session);
 	registerEdgeeCommand(pi, session, statusline);
 
+	// omp titles an unnamed session itself and drops its title once a name exists, so under omp
+	// the prompt-derived name is only a fallback, applied after omp had its chance (see agent_end).
+	let fallbackPrompt: string | undefined;
+	let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+	const cancelFallback = () => {
+		fallbackPrompt = undefined;
+		if (fallbackTimer) clearTimeout(fallbackTimer);
+		fallbackTimer = undefined;
+	};
+
 	pi.on("session_start", (event, ctx) => {
+		cancelFallback();
 		session.reset(ctx);
 		statusline.reset();
 		statusline.render(ctx);
+		// omp's session_start carries no reason and fires once, at startup.
+		const startup = event.reason === undefined || event.reason === "startup";
 		const contextError = cliContextError();
-		if (contextError && event.reason === "startup") {
+		if (contextError && startup) {
 			ctx.ui.notify(`Edgee launch context rejected (${contextError}). Edgee models are disabled for this run.`, "error");
 		}
-		const stale = event.reason === "startup" ? staleCliProviders() : [];
+		const stale = startup && !ompCompanion() ? staleCliProviders() : [];
 		if (stale.length > 0) {
 			ctx.ui.notify(
 				`models.json still has provider block(s) ${stale.join(", ")} from \`edgee launch pi\`; they break Edgee requests outside it. Remove them, pi-edgee now provides "edgee".`,
@@ -61,6 +80,20 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 
 	pi.on("model_select", (_event, ctx) => statusline.render(ctx));
 
+	// omp reports /new, resume and fork as session_switch rather than another session_start.
+	// Not in pi's event types, hence the cast; pi never emits it.
+	if (ompCompanion()) {
+		(pi as unknown as { on(event: string, handler: (event: unknown, ctx: ExtensionContext) => void): void }).on(
+			"session_switch",
+			(_event, ctx) => {
+				cancelFallback();
+				session.reset(ctx);
+				statusline.reset();
+				statusline.render(ctx);
+			},
+		);
+	}
+
 	pi.on("session_info_changed", (_event, ctx) => void session.flush(ctx));
 
 	// Unnamed sessions get a name from their first prompt, then a model-written title
@@ -68,6 +101,10 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 	// so any user entry means this is not the first.
 	pi.on("before_agent_start", (event, ctx) => {
 		if (!EdgeeSession.usesEdgee(ctx) || pi.getSessionName() || hasUserMessage(ctx)) return;
+		if (ompCompanion()) {
+			fallbackPrompt = event.prompt;
+			return;
+		}
 		const placeholder = deriveSessionName(event.prompt);
 		if (placeholder) pi.setSessionName(placeholder);
 		void nameWithModel(pi, ctx, session, event.prompt, placeholder);
@@ -100,7 +137,20 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 		void session.flush(ctx);
 	});
 
-	pi.on("agent_end", (_event, ctx) => statusline.refreshAfterResponse(ctx));
+	pi.on("agent_end", (_event, ctx) => {
+		statusline.refreshAfterResponse(ctx);
+		if (fallbackPrompt === undefined || fallbackTimer) return;
+		const prompt = fallbackPrompt;
+		const sessionId = session.id;
+		fallbackTimer = setTimeout(() => {
+			fallbackTimer = undefined;
+			if (fallbackPrompt !== prompt || !session.isActive || session.id !== sessionId) return;
+			fallbackPrompt = undefined;
+			const name = deriveSessionName(prompt);
+			if (name && !pi.getSessionName()) pi.setSessionName(name);
+		}, OMP_TITLE_GRACE_MS);
+		fallbackTimer.unref?.();
+	});
 
 	pi.on("tool_result", (event, ctx) => {
 		if (event.toolName !== "bash" || event.isError || !session.hasTraffic) return;
@@ -112,9 +162,10 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 	});
 
 	pi.on("session_shutdown", async (event, ctx) => {
+		cancelFallback();
 		statusline.dispose(ctx);
 		// Before /end: metadata writes after the session closed would be lost.
-		await session.shutdown(ctx, METADATA_DRAIN_MS);
+		await session.shutdown(ctx, ompCompanion() ? OMP_METADATA_DRAIN_MS : METADATA_DRAIN_MS);
 		// `edgee launch pi` ends the session and prints its own report after pi exits.
 		if (event.reason !== "quit" || launchedByCli() || !session.hasTraffic || ctx.mode !== "tui") return;
 		const credential = currentCredential();
