@@ -84,23 +84,28 @@ function thinkingLevelMap(efforts: string[]): ThinkingLevelMap {
 }
 
 /**
- * One provider serves every model: Anthropic models keep pi's native Messages
- * transport (prompt caching, adaptive thinking), everything else goes through
- * Chat Completions. pi appends `/v1/messages` itself, hence no `/v1` there.
+ * One provider serves every model: Anthropic uses Messages, verified OpenAI
+ * models use Responses, and everything else uses Chat Completions.
+ * pi appends `/v1/messages` itself, hence no `/v1` on the Messages base URL.
  */
-export function buildModels(ids: string[], catalog: Map<string, ModelMetadata>, gateway: string): ProviderModelConfig[] {
+export function buildModels(
+	ids: string[],
+	catalog: Map<string, ModelMetadata>,
+	gateway: string,
+): ProviderModelConfig[] {
 	return ids
 		.filter((id) => !catalog.get(id)?.appSubscriptionOnly)
 		.map((id) => {
 			const meta = catalog.get(id);
 			const anthropic = id.startsWith("anthropic/");
+			const responses = id === "openai/gpt-6.1-sol" || id === "openai/gpt-6-luna";
 			const input = (meta?.inputModalities ?? []).filter((m): m is "text" | "image" => m === "text" || m === "image");
 			const reasoning = (meta?.reasoningEfforts.length ?? 0) > 0;
 			const model: ProviderModelConfig = {
 				// The gateway id doubles as pi's model id so `--model anthropic/claude-sonnet-5` works.
 				id,
 				name: id,
-				api: anthropic ? "anthropic-messages" : "openai-completions",
+				api: anthropic ? "anthropic-messages" : responses ? "openai-responses" : "openai-completions",
 				baseUrl: anthropic ? gateway : `${gateway}/v1`,
 				reasoning,
 				input: input.length > 0 ? input : ["text"],
@@ -113,6 +118,23 @@ export function buildModels(ids: string[], catalog: Map<string, ModelMetadata>, 
 				// The gateway maps pi's adaptive control onto whichever Claude upstream it picks.
 				if (anthropic) model.compat = { forceAdaptiveThinking: true } as ProviderModelConfig["compat"];
 			}
+			// Verified on Opus 5.5 through Mantle. Do not infer support from the
+			// provider or Claude family: Sonnet 5 rejects native tool changes.
+			if (id === "anthropic/claude-opus-5-5") {
+				model.compat = {
+					...model.compat,
+					supportsMidConvoSystemMessages: true,
+					supportsMidConvoToolChanges: true,
+				};
+			}
+			if (responses) {
+				model.compat = {
+					supportsMidConvoSystemMessages: true,
+					supportsAdditionalTools: true,
+					supportsToolSearch: true,
+					supportsStrictMode: true,
+				};
+			}
 			return model;
 		});
 }
@@ -124,7 +146,10 @@ function cachePath(): string {
 /** Last fetched model list for this gateway, so startup never blocks on the network. */
 export async function readModelCache(gateway: string): Promise<ProviderModelConfig[] | undefined> {
 	try {
-		const parsed = JSON.parse(await readFile(cachePath(), "utf8")) as { gatewayUrl?: string; models?: ProviderModelConfig[] };
+		const parsed = JSON.parse(await readFile(cachePath(), "utf8")) as {
+			gatewayUrl?: string;
+			models?: ProviderModelConfig[];
+		};
 		// Model base URLs embed the gateway: a list fetched for another one would misroute.
 		if (parsed.gatewayUrl !== gateway) return undefined;
 		return Array.isArray(parsed.models) && parsed.models.length > 0 ? parsed.models : undefined;
