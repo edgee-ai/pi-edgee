@@ -84,6 +84,31 @@ describe("loadCliContext", () => {
 		expect(cliContextError()).toBeUndefined();
 	});
 
+	it("keeps the context when pi reloads the extension after a session switch", () => {
+		load(valid, { EDGEE_API_KEY: "ek_cli" });
+		// switch_session / new_session rebuild pi's runtime and load extensions again,
+		// with the variable already scrubbed.
+		loadCliContext({});
+		expect(cliContext()?.apiKey).toBe("ek_cli");
+		expect(currentCredential()?.access).toBe("ek_cli");
+		expect(launchedByCli()).toBe(true);
+	});
+
+	it("keeps the context across a fresh import of the module", async () => {
+		load(valid);
+		vi.resetModules();
+		const fresh = await import("../src/cli-context.ts");
+		fresh.loadCliContext({});
+		expect(fresh.cliContext()?.apiKey).toBe("ek_cli");
+	});
+
+	it("stays fail-closed after a reload when the context was rejected", () => {
+		load({ ...valid, version: 9 });
+		loadCliContext({});
+		expect(cliContextError()).toMatch(/unsupported version 9/);
+		expect(currentCredential()).toBeUndefined();
+	});
+
 	it("records an error for a bad context and still scrubs it", () => {
 		const env = load({ ...valid, version: 9 }, { EDGEE_API_KEY: "ek_old" });
 		expect(cliContext()).toBeUndefined();

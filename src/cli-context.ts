@@ -30,7 +30,18 @@ export interface CliContext {
 
 type State = { status: "none" } | { status: "ok"; context: CliContext } | { status: "error"; message: string };
 
-let state: State = { status: "none" };
+/**
+ * Pi rebuilds its runtime, and reloads every extension, on each session switch
+ * and /new. By then the env var is gone (scrubbed below), so the state must
+ * outlive both the environment and this module instance, which a reload may
+ * import fresh.
+ */
+const STATE_KEY = Symbol.for("pi-edgee.cliContext");
+const store = globalThis as { [STATE_KEY]?: State };
+
+function state(): State {
+	return store[STATE_KEY] ?? { status: "none" };
+}
 
 function text(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.trim() === "") throw new Error(`"${field}" must be a non-empty string`);
@@ -91,26 +102,26 @@ export function parseCliContext(raw: string): CliContext {
  * Reads the launch context once at extension load. The credentials are then
  * removed from `process.env` so commands pi runs for the agent (the bash tool
  * inherits it) cannot read the gateway key or the console token.
+ * Later loads (pi reloads extensions on session switch) find the variable gone
+ * and keep the context read the first time.
  */
 export function loadCliContext(env: NodeJS.ProcessEnv = process.env): void {
 	const raw = env[CLI_CONTEXT_ENV];
-	if (raw === undefined) {
-		state = { status: "none" };
-		return;
-	}
+	if (raw === undefined) return;
 	delete env[CLI_CONTEXT_ENV];
 	try {
 		const context = parseCliContext(raw);
 		delete env.EDGEE_API_KEY;
-		state = { status: "ok", context };
+		store[STATE_KEY] = { status: "ok", context };
 	} catch (error) {
-		state = { status: "error", message: error instanceof Error ? error.message : "invalid context" };
+		store[STATE_KEY] = { status: "error", message: error instanceof Error ? error.message : "invalid context" };
 	}
 }
 
 /** The validated launch context, or undefined when standalone or invalid. */
 export function cliContext(): CliContext | undefined {
-	return state.status === "ok" ? state.context : undefined;
+	const current = state();
+	return current.status === "ok" ? current.context : undefined;
 }
 
 /**
@@ -118,7 +129,8 @@ export function cliContext(): CliContext | undefined {
  * closed: falling back to a stored `/login` would silently pick another account.
  */
 export function cliContextError(): string | undefined {
-	return state.status === "error" ? state.message : undefined;
+	const current = state();
+	return current.status === "error" ? current.message : undefined;
 }
 
 /** Headers every Edgee request carries: the session and, under a launch context, the debug-log key. */
@@ -132,5 +144,5 @@ export function launchHeaders(sessionId: string): Record<string, string> {
 
 /** Test hook. */
 export function resetCliContext(): void {
-	state = { status: "none" };
+	delete store[STATE_KEY];
 }
