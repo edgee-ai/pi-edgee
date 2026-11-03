@@ -20,10 +20,13 @@ let rpcId = 0;
  * unlinked GitHub repo), throws on transport or RPC errors.
  */
 export async function callSessionTool(userToken: string, name: ToolName, args: Record<string, string>): Promise<boolean> {
+  // Launcher context must never be inferred from an explicitly targeted other session.
+  const launchId = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim();
   const response = await fetch(mcpUrl(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${userToken}`,
+      ...(launchId ? { "X-Edgee-Launch-Id": launchId } : {}),
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     },
@@ -107,7 +110,8 @@ export class EdgeeSession {
   /** Console page for this session. */
   pageUrl(credential: EdgeeCredential | undefined = currentCredential()): string {
     const slug = credential?.orgSlug ?? process.env.EDGEE_ORG_SLUG;
-    return slug ? `${consoleUrl()}/~/${slug}/sessions/${this.id}` : `${consoleUrl()}/~/me/sessions/${this.id}`;
+    const collection = (cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim()) ? "launch-sessions" : "sessions";
+    return `${consoleUrl()}/~/${encodeURIComponent(slug || "me")}/${collection}/${encodeURIComponent(this.id)}`;
   }
 
   /** Why metadata cannot be written at all, or undefined when it can. */
