@@ -75,7 +75,7 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 
 	pi.on("before_provider_headers", (event, ctx) => {
 		if (!EdgeeSession.usesEdgee(ctx)) return;
-		Object.assign(event.headers, launchHeaders(session.id));
+		Object.assign(event.headers, launchHeaders(session.id, session.agentId));
 	});
 
 	pi.on("after_provider_response", (event, ctx) => {

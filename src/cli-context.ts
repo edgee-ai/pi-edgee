@@ -133,11 +133,16 @@ export function cliContextError(): string | undefined {
 	return current.status === "error" ? current.message : undefined;
 }
 
-/** Headers every Edgee request carries: the session and, under a launch context, the debug-log key. */
-export function launchHeaders(sessionId: string): Record<string, string> {
+/**
+ * Headers every Edgee request carries: the session, pi's own session ID when it
+ * differs (under a launch, so the gateway records the agent-facing session) and,
+ * under a launch context, the debug-log key.
+ */
+export function launchHeaders(sessionId: string, agentSessionId?: string): Record<string, string> {
 	const debug = cliContext()?.debugHeaders;
 	return {
 		"x-edgee-session-id": sessionId,
+		...(agentSessionId && agentSessionId !== sessionId ? { "x-edgee-harness-session-id": agentSessionId } : {}),
 		...(debug ? { "x-edgee-debug-pubkey": debug.pubkey, "x-edgee-debug-salt": debug.salt } : {}),
 	};
 }

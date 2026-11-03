@@ -192,6 +192,14 @@ describe("launchHeaders", () => {
 		expect(launchHeaders(SESSION_ID)).toEqual({ "x-edgee-session-id": SESSION_ID });
 	});
 
+	it("adds pi's own session ID only when it differs from the launch", () => {
+		expect(launchHeaders(SESSION_ID, SESSION_ID)).toEqual({ "x-edgee-session-id": SESSION_ID });
+		expect(launchHeaders(SESSION_ID, "pi-native")).toEqual({
+			"x-edgee-session-id": SESSION_ID,
+			"x-edgee-harness-session-id": "pi-native",
+		});
+	});
+
 	it("adds the debug-log key under a launch context", () => {
 		load({ ...valid, debugHeaders: { pubkey: "pk", salt: "salt" } });
 		expect(launchHeaders(SESSION_ID)).toEqual({

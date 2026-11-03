@@ -61,6 +61,8 @@ function isIgnoredResult(text: string): boolean {
  */
 export class EdgeeSession {
   id = "";
+  /** pi's own session ID: the visible session in Edgee (resets on /new, kept on resume). */
+  agentId = "";
   /** A request for this session went through an Edgee provider. */
   hasTraffic = false;
   readonly fallbacksSeen = new Set<string>();
@@ -91,7 +93,8 @@ export class EdgeeSession {
   }
 
   reset(ctx: ExtensionContext): void {
-    this.id = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim() || ctx.sessionManager.getSessionId();
+    this.agentId = ctx.sessionManager.getSessionId();
+    this.id = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim() || this.agentId;
     this.cwd = ctx.cwd;
     this.active = true;
     this.hasTraffic = false;
@@ -209,7 +212,9 @@ export class EdgeeSession {
     const credential = currentCredential();
     if (!credential || !this.id) return "failed";
     try {
-      const applied = await callSessionTool(credential.refresh, tool, { sessionId: this.id, ...args });
+      // Metadata belongs to pi's session; the launch header lets the API place it
+      // before that session's first usage arrives.
+      const applied = await callSessionTool(credential.refresh, tool, { sessionId: this.agentId || this.id, ...args });
       this.lastError = undefined;
       this.failures = 0;
       return applied ? "ok" : "ignored";

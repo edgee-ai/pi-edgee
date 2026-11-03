@@ -147,3 +147,16 @@ it("uses validated CLI context over stale legacy launch IDs across metadata, lin
 		"https://api.example/v1/organizations/org-context/launch-sessions/context-launch/end",
 	]);
 });
+
+it("writes metadata to pi's own session under a launch, with the launch as context", async () => {
+	const mcp = mockMcp();
+	mcp.known = true;
+	const { session, ctx } = setup("Fix login");
+	vi.stubEnv("EDGEE_SESSION_ID", "launch-current");
+	session.reset(ctx);
+	session.hasTraffic = true;
+	expect(session.id).toBe("launch-current");
+	expect(session.agentId).toBe(SESSION_ID);
+	await session.flush(ctx);
+	expect(mcp.calls.find((call) => call.name === "setSessionName")?.args).toEqual({ sessionId: SESSION_ID, name: "Fix login" });
+});
