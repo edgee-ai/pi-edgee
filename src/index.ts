@@ -142,12 +142,13 @@ async function nameWithModel(
 	placeholder: string | undefined,
 ): Promise<void> {
 	const sessionId = session.id;
+	const agentSessionId = session.agentId;
 	try {
 		const settings = await readSettings();
 		if (settings.sessionNaming !== "model") return;
-		const name = await generateSessionName(ctx, prompt, settings, sessionId, AbortSignal.timeout(NAMING_TIMEOUT_MS));
+		const name = await generateSessionName(ctx, prompt, settings, sessionId, agentSessionId, AbortSignal.timeout(NAMING_TIMEOUT_MS));
 		// A /new, a quit, or a manual rename while the model was thinking all win over the title.
-		if (!name || !session.isActive || session.id !== sessionId || pi.getSessionName() !== placeholder) return;
+		if (!name || !session.isActive || session.id !== sessionId || session.agentId !== agentSessionId || pi.getSessionName() !== placeholder) return;
 		pi.setSessionName(name);
 	} catch {
 		// The placeholder is a fine name; never surface naming failures.
