@@ -20,10 +20,13 @@ let rpcId = 0;
  * unlinked GitHub repo), throws on transport or RPC errors.
  */
 export async function callSessionTool(userToken: string, name: ToolName, args: Record<string, string>): Promise<boolean> {
+  // Launcher context must never be inferred from an explicitly targeted other session.
+  const launchId = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim();
   const response = await fetch(mcpUrl(), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${userToken}`,
+      ...(launchId ? { "X-Edgee-Launch-Id": launchId } : {}),
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",
     },
@@ -58,6 +61,8 @@ function isIgnoredResult(text: string): boolean {
  */
 export class EdgeeSession {
   id = "";
+  /** pi's own session ID: the visible session in Edgee (resets on /new, kept on resume). */
+  agentId = "";
   /** A request for this session went through an Edgee provider. */
   hasTraffic = false;
   readonly fallbacksSeen = new Set<string>();
@@ -88,7 +93,8 @@ export class EdgeeSession {
   }
 
   reset(ctx: ExtensionContext): void {
-    this.id = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim() || ctx.sessionManager.getSessionId();
+    this.agentId = ctx.sessionManager.getSessionId();
+    this.id = cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim() || this.agentId;
     this.cwd = ctx.cwd;
     this.active = true;
     this.hasTraffic = false;
@@ -107,7 +113,8 @@ export class EdgeeSession {
   /** Console page for this session. */
   pageUrl(credential: EdgeeCredential | undefined = currentCredential()): string {
     const slug = credential?.orgSlug ?? process.env.EDGEE_ORG_SLUG;
-    return slug ? `${consoleUrl()}/~/${slug}/sessions/${this.id}` : `${consoleUrl()}/~/me/sessions/${this.id}`;
+    const collection = (cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim()) ? "launch-sessions" : "sessions";
+    return `${consoleUrl()}/~/${encodeURIComponent(slug || "me")}/${collection}/${encodeURIComponent(this.id)}`;
   }
 
   /** Why metadata cannot be written at all, or undefined when it can. */
@@ -205,7 +212,9 @@ export class EdgeeSession {
     const credential = currentCredential();
     if (!credential || !this.id) return "failed";
     try {
-      const applied = await callSessionTool(credential.refresh, tool, { sessionId: this.id, ...args });
+      // Metadata belongs to pi's session; the launch header lets the API place it
+      // before that session's first usage arrives.
+      const applied = await callSessionTool(credential.refresh, tool, { sessionId: this.agentId || this.id, ...args });
       this.lastError = undefined;
       this.failures = 0;
       return applied ? "ok" : "ignored";

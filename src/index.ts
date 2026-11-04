@@ -75,7 +75,7 @@ export default async function edgee(pi: ExtensionAPI): Promise<void> {
 
 	pi.on("before_provider_headers", (event, ctx) => {
 		if (!EdgeeSession.usesEdgee(ctx)) return;
-		Object.assign(event.headers, launchHeaders(session.id));
+		Object.assign(event.headers, launchHeaders(session.id, session.agentId));
 	});
 
 	pi.on("after_provider_response", (event, ctx) => {
@@ -142,12 +142,13 @@ async function nameWithModel(
 	placeholder: string | undefined,
 ): Promise<void> {
 	const sessionId = session.id;
+	const agentSessionId = session.agentId;
 	try {
 		const settings = await readSettings();
 		if (settings.sessionNaming !== "model") return;
-		const name = await generateSessionName(ctx, prompt, settings, sessionId, AbortSignal.timeout(NAMING_TIMEOUT_MS));
+		const name = await generateSessionName(ctx, prompt, settings, sessionId, agentSessionId, AbortSignal.timeout(NAMING_TIMEOUT_MS));
 		// A /new, a quit, or a manual rename while the model was thinking all win over the title.
-		if (!name || !session.isActive || session.id !== sessionId || pi.getSessionName() !== placeholder) return;
+		if (!name || !session.isActive || session.id !== sessionId || session.agentId !== agentSessionId || pi.getSessionName() !== placeholder) return;
 		pi.setSessionName(name);
 	} catch {
 		// The placeholder is a fine name; never surface naming failures.

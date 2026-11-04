@@ -1,3 +1,4 @@
+import { cliContext } from "./cli-context.ts";
 import { consoleApiUrl } from "./config.ts";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -188,14 +189,16 @@ export class ConsoleApi {
 	}
 
 	sessionSummary(orgRef: string, sessionId: string, signal?: AbortSignal): Promise<SessionSummary | undefined> {
-		return this.request<SessionSummary>(`/v1/organizations/${orgRef}/sessions/${sessionId}/summary`, {
+		const collection = (cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim()) ? "launch-sessions" : "sessions";
+		return this.request<SessionSummary>(`/v1/organizations/${encodeURIComponent(orgRef)}/${collection}/${encodeURIComponent(sessionId)}/summary`, {
 			signal,
 			allowNotFound: true,
 		});
 	}
 
 	endSession(orgRef: string, sessionId: string, signal?: AbortSignal): Promise<SessionStats | undefined> {
-		return this.request<SessionStats>(`/v1/organizations/${orgRef}/sessions/${sessionId}/end`, {
+		const collection = (cliContext()?.sessionId || process.env.EDGEE_SESSION_ID?.trim()) ? "launch-sessions" : "sessions";
+		return this.request<SessionStats>(`/v1/organizations/${encodeURIComponent(orgRef)}/${collection}/${encodeURIComponent(sessionId)}/end`, {
 			method: "POST",
 			signal,
 			allowNotFound: true,

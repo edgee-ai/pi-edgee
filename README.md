@@ -88,6 +88,14 @@ Plain `pi` is unaffected: `/login edgee` keeps working as described above. The s
 
 If you installed this package yourself, keep it at `0.2.0` or newer to use it with `edgee launch pi`. The CLI skips its own copy when it finds yours.
 
+Launcher MCP calls retain user bearer authentication and send `X-Edgee-Launch-Id`
+from validated CLI context, falling back to `EDGEE_SESSION_ID` for older launchers.
+Explicit other-session arguments are not overwritten. Standalone sessions omit
+launch context. Launcher console links and analytics use `/launch-sessions/{id}`;
+standalone session links use `/sessions/{id}`.
+CLI-pinned npm releases must include this transport change before it reaches
+`edgee launch pi`; a local checkout can be loaded with `EDGEE_PI_EXTENSION`.
+
 ## Development
 
 ```sh
