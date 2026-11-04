@@ -24,7 +24,7 @@ Pick a model with `/model`, or pass one on the command line. Model ids match the
 
 | Feature | How |
 |---|---|
-| Provider | One `edgee` provider for every gateway model. `anthropic/*` models use pi's Anthropic Messages transport and the rest use Chat Completions. Context windows, prices and reasoning levels come from the Edgee catalog. The model list is cached in `~/.pi/agent/edgee/models.json`, so startup does not wait on the network. |
+| Provider | One `edgee` provider for every gateway model. `anthropic/*` models use Anthropic Messages; verified `openai/gpt-6.1-sol` and `openai/gpt-6-luna` use Responses; other models use Chat Completions. Context windows, prices and reasoning levels come from the Edgee catalog. The model list is cached in `~/.pi/agent/edgee/models.json`, so startup does not wait on the network. |
 | Session id | Every Edgee request carries `x-edgee-session-id` with pi's session id. A resumed pi session continues the same Edgee session, and `/new` starts a new one. |
 | Statusline | A `三 Edgee …` line under pi's footer with tokens, gateway cost, compression savings, request count and fallback state. |
 | Session name | An unnamed session takes the first line of its first prompt as its name right away, then a model writes a short title in the background and replaces it. The naming call goes through the gateway under the same session. `/edgee settings` turns this off (keeping the first-line name) or picks the naming model, which defaults to the current one. A name set with `--name` or `/name` is never overwritten. The plugin sends pi's session name to Edgee, including later changes. |
@@ -34,6 +34,26 @@ Pick a model with `/model`, or pass one on the command line. Model ids match the
 | End-of-session report | On exit, pi prints the session's requests, cost, savings and compression, with a link to the session page. |
 
 Session metadata goes to the Edgee session MCP endpoint. It needs `/login edgee`, and it respects the organization's "Edgee MCP" setting. The plugin sends it after the session's first turn and retries anything that failed on the next turn. `/edgee status` shows whether it is in sync.
+
+### Native conversation updates
+
+`anthropic/claude-opus-5-5` enables pi's `supportsMidConvoSystemMessages` and
+`supportsMidConvoToolChanges`. Other Claude models remain opted out.
+
+`openai/gpt-6.1-sol` and `openai/gpt-6-luna` use Responses with
+`supportsMidConvoSystemMessages`, `supportsAdditionalTools`, `supportsToolSearch`,
+and strict function schemas. Live Mantle probes verified later developer
+instructions, tool additions, same-name schema updates, and client-executed tool
+search results while retaining cached prefixes. Tool removal is an instruction
+to the model, not API-level unregistration. Other OpenAI models remain unchanged.
+
+Pi versions using inline tool definitions require a gateway that forwards the
+`inline-tools-2026-09-15` beta to Bedrock Mantle. Inline tool changes require a
+native Messages route; the gateway must not convert them through Bedrock Converse
+or another transport that would discard the updates. Responses tool-search items
+and tool declarations introduced after conversation start also require native
+Responses dispatch rather than a translated fallback. Deploy the gateway support
+before enabling these capabilities in the plugin.
 
 ## Commands
 
