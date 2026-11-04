@@ -18,6 +18,9 @@ const OUTPUT_TOKEN_MAX = 64_000;
 const FALLBACK_CONTEXT_WINDOW = 128_000;
 const FALLBACK_MAX_TOKENS = 16_384;
 
+/** Bump when generated transport or capability configuration changes. */
+const MODEL_CACHE_VERSION = 1;
+
 /** pi thinking level to gateway reasoning effort. */
 const THINKING_LEVELS = [
 	["off", "none"],
@@ -147,11 +150,12 @@ function cachePath(): string {
 export async function readModelCache(gateway: string): Promise<ProviderModelConfig[] | undefined> {
 	try {
 		const parsed = JSON.parse(await readFile(cachePath(), "utf8")) as {
+			version?: number;
 			gatewayUrl?: string;
 			models?: ProviderModelConfig[];
 		};
 		// Model base URLs embed the gateway: a list fetched for another one would misroute.
-		if (parsed.gatewayUrl !== gateway) return undefined;
+		if (parsed.version !== MODEL_CACHE_VERSION || parsed.gatewayUrl !== gateway) return undefined;
 		return Array.isArray(parsed.models) && parsed.models.length > 0 ? parsed.models : undefined;
 	} catch {
 		return undefined;
@@ -161,6 +165,6 @@ export async function readModelCache(gateway: string): Promise<ProviderModelConf
 export async function writeModelCache(gateway: string, models: ProviderModelConfig[]): Promise<void> {
 	const path = cachePath();
 	await mkdir(dirname(path), { recursive: true });
-	const body = { gatewayUrl: gateway, fetchedAt: new Date().toISOString(), models };
+	const body = { version: MODEL_CACHE_VERSION, gatewayUrl: gateway, fetchedAt: new Date().toISOString(), models };
 	await writeFile(path, `${JSON.stringify(body, null, "\t")}\n`);
 }

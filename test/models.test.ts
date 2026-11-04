@@ -1,13 +1,20 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import type { Message, Model } from "@earendil-works/pi-ai";
 import { stream } from "@earendil-works/pi-ai/api/openai-responses";
 import { normalizeContext } from "@earendil-works/pi-ai/utils/transcript";
 import type { ResponseCreateParamsStreaming } from "openai/resources/responses/responses";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { buildCatalog, buildModels, readModelCache, writeModelCache } from "../src/models.ts";
 
-vi.mock("@earendil-works/pi-coding-agent", () => ({ getAgentDir: () => "/nonexistent" }));
+const dir = await mkdtemp(join(tmpdir(), "pi-edgee-models-"));
+let agentDir = dir;
+vi.mock("@earendil-works/pi-coding-agent", () => ({ getAgentDir: () => agentDir }));
 
-const { buildCatalog, buildModels } = await import("../src/models.ts");
+afterAll(() => rm(dir, { recursive: true, force: true }));
 
 const GATEWAY = "https://edgee.io";
 
@@ -160,5 +167,47 @@ describe("buildModels", () => {
 		expect(unknown.contextWindow).toBe(128_000);
 		expect(unknown.maxTokens).toBe(16_384);
 		expect(unknown.input).toEqual(["text"]);
+	});
+});
+
+describe("model cache", () => {
+	beforeEach(async () => {
+		agentDir = await mkdtemp(join(dir, "agent-"));
+	});
+
+	it("rejects pre-feature caches instead of registering obsolete transports and capabilities", async () => {
+		await mkdir(join(agentDir, "edgee"), { recursive: true });
+		await writeFile(
+			join(agentDir, "edgee", "models.json"),
+			JSON.stringify({
+				gatewayUrl: GATEWAY,
+				fetchedAt: "2026-07-01T00:00:00.000Z",
+				models: ["openai/gpt-6.1-sol", "openai/gpt-6-luna", "anthropic/claude-opus-5-5"].map((id) => ({
+					id,
+					name: id,
+					api: id.startsWith("anthropic/") ? "anthropic-messages" : "openai-completions",
+					baseUrl: id.startsWith("anthropic/") ? GATEWAY : `${GATEWAY}/v1`,
+					reasoning: false,
+					input: ["text"],
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+					contextWindow: 128_000,
+					maxTokens: 16_384,
+				})),
+			}),
+		);
+
+		// A cache miss enters the existing bounded fetch path, never stale registration.
+		expect(await readModelCache(GATEWAY)).toBeUndefined();
+	});
+
+	it("accepts a refreshed cache after invalidating the old format", async () => {
+		const models = buildModels(["openai/gpt-6.1-sol"], catalog, GATEWAY);
+		await writeModelCache(GATEWAY, models);
+		expect(await readModelCache(GATEWAY)).toEqual(models);
+	});
+
+	it("does not reuse a current cache for another gateway", async () => {
+		await writeModelCache(GATEWAY, buildModels(["openai/gpt-6.1-sol"], catalog, GATEWAY));
+		expect(await readModelCache("https://other.edgee.io")).toBeUndefined();
 	});
 });
