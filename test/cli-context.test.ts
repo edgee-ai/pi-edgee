@@ -92,6 +92,31 @@ describe("loadCliContext", () => {
 		expect(cliContextError()).toBeUndefined();
 	});
 
+	it("keeps the context when pi reloads the extension after a session switch", () => {
+		load(valid, { EDGEE_API_KEY: "ek_cli" });
+		// switch_session / new_session rebuild pi's runtime and load extensions again,
+		// with the variable already scrubbed.
+		loadCliContext({});
+		expect(cliContext()?.apiKey).toBe("ek_cli");
+		expect(currentCredential()?.access).toBe("ek_cli");
+		expect(launchedByCli()).toBe(true);
+	});
+
+	it("keeps the context across a fresh import of the module", async () => {
+		load(valid);
+		vi.resetModules();
+		const fresh = await import("../src/cli-context.ts");
+		fresh.loadCliContext({});
+		expect(fresh.cliContext()?.apiKey).toBe("ek_cli");
+	});
+
+	it("stays fail-closed after a reload when the context was rejected", () => {
+		load({ ...valid, version: 9 });
+		loadCliContext({});
+		expect(cliContextError()).toMatch(/unsupported version 9/);
+		expect(currentCredential()).toBeUndefined();
+	});
+
 	it("records an error for a bad context and still scrubs it", () => {
 		const env = load({ ...valid, version: 9 }, { EDGEE_API_KEY: "ek_old" });
 		expect(cliContext()).toBeUndefined();
@@ -189,6 +214,14 @@ describe("provider registration under a launch context", () => {
 describe("launchHeaders", () => {
 	it("carries only the session standalone", () => {
 		expect(launchHeaders(SESSION_ID)).toEqual({ "x-edgee-session-id": SESSION_ID });
+	});
+
+	it("adds pi's own session ID only when it differs from the launch", () => {
+		expect(launchHeaders(SESSION_ID, SESSION_ID)).toEqual({ "x-edgee-session-id": SESSION_ID });
+		expect(launchHeaders(SESSION_ID, "pi-native")).toEqual({
+			"x-edgee-session-id": SESSION_ID,
+			"x-edgee-harness-session-id": "pi-native",
+		});
 	});
 
 	it("adds the debug-log key under a launch context", () => {

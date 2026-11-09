@@ -1,3 +1,5 @@
+import type { Model } from "@earendil-works/pi-ai";
+import { streamSimple as streamCompletions } from "@earendil-works/pi-ai/api/openai-completions";
 import { describe, expect, it, vi } from "vitest";
 
 import { cleanGeneratedName, deriveSessionName, extractTitle, generateSessionName, NAMING_PROMPT, namingMessage } from "../src/naming.ts";
@@ -122,7 +124,7 @@ describe("generateSessionName", () => {
 
 	it("uses the configured model and tags the session", async () => {
 		const { ctx, call } = setup({ stopReason: "stop", text: '{"title":"Flaky auth test"}' });
-		const name = await generateSessionName(ctx, "the auth test fails", { sessionNaming: "model", namingModel: small.id }, SESSION_ID);
+		const name = await generateSessionName(ctx, "the auth test fails", { sessionNaming: "model", namingModel: small.id }, SESSION_ID, SESSION_ID);
 		expect(name).toBe("Flaky auth test");
 		const { model, context, options } = call();
 		expect(model).toBe(small);
@@ -137,7 +139,7 @@ describe("generateSessionName", () => {
 
 	it("falls back to the current model with medium thinking and the title schema", async () => {
 		const { ctx, call } = setup({ stopReason: "stop", text: '{"title":"Login flow"}' }, {});
-		const name = await generateSessionName(ctx, "hi", { sessionNaming: "model", namingModel: "gone/model" }, SESSION_ID);
+		const name = await generateSessionName(ctx, "hi", { sessionNaming: "model", namingModel: "gone/model" }, SESSION_ID, SESSION_ID);
 		expect(name).toBe("Login flow");
 		const { model, options } = call();
 		expect(model).toBe(current);
@@ -152,11 +154,52 @@ describe("generateSessionName", () => {
 
 	it("returns undefined on hosts without a direct streaming call (omp)", async () => {
 		const ctx = { model: current, modelRegistry: { find: () => undefined, hasConfiguredAuth: () => true } };
-		expect(await generateSessionName(ctx as never, "hi", { sessionNaming: "model" }, SESSION_ID)).toBeUndefined();
+		expect(await generateSessionName(ctx as never, "hi", { sessionNaming: "model" }, SESSION_ID, SESSION_ID)).toBeUndefined();
 	});
 
 	it("returns undefined on a failed response", async () => {
 		const { ctx } = setup({ stopReason: "error", text: "" });
-		expect(await generateSessionName(ctx, "hi", { sessionNaming: "model" }, SESSION_ID)).toBeUndefined();
+		expect(await generateSessionName(ctx, "hi", { sessionNaming: "model" }, SESSION_ID, SESSION_ID)).toBeUndefined();
+	});
+
+	it.each([
+		{ mode: "launched", routingId: "launch-L", nativeId: "native-N", harnessId: "native-N" },
+		{ mode: "standalone", routingId: SESSION_ID, nativeId: SESSION_ID, harnessId: null },
+	])("attributes the generated HTTP naming request in $mode mode", async ({ routingId, nativeId, harnessId }) => {
+		const model: Model<"openai-completions"> = {
+			...small,
+			api: "openai-completions",
+			name: "Naming model",
+			baseUrl: "https://gateway.example/v1",
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 128_000,
+			maxTokens: 16_384,
+		};
+		let request: Request | undefined;
+		const streamSimple: typeof streamCompletions = (selected, context, options) =>
+			streamCompletions(selected, context, {
+				...options,
+				apiKey: "test-key",
+				fetch: async (input, init) => {
+					request = new Request(input, init);
+					const chunk = {
+						id: "naming-response",
+						object: "chat.completion.chunk",
+						created: 1,
+						model: model.id,
+						choices: [{ index: 0, delta: { content: '{"title":"Login flow"}' }, finish_reason: "stop" }],
+					};
+					return new Response(`data: ${JSON.stringify(chunk)}\n\ndata: [DONE]\n\n`, {
+						headers: { "content-type": "text/event-stream" },
+					});
+				},
+			});
+		const ctx = { model, modelRegistry: { hasConfiguredAuth: () => true, streamSimple } };
+
+		expect(await generateSessionName(ctx as never, "fix login", { sessionNaming: "model" }, routingId, nativeId)).toBe("Login flow");
+		expect(request?.url).toBe("https://gateway.example/v1/chat/completions");
+		expect(request?.headers.get("x-edgee-session-id")).toBe(routingId);
+		expect(request?.headers.get("x-edgee-harness-session-id")).toBe(harnessId);
 	});
 });

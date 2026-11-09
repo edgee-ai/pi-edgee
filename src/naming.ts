@@ -115,6 +115,7 @@ export async function generateSessionName(
   prompt: string,
   settings: EdgeeLocalSettings,
   sessionId: string,
+  agentSessionId: string,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
   // Hosts forked from pi (omp) have no direct streaming call; the prompt-derived name stays.
@@ -142,8 +143,8 @@ export async function generateSessionName(
           : { maxTokens: MAX_TITLE_TOKENS }),
         onPayload: withTitleSchema,
         signal,
-        // Direct calls skip before_provider_headers, so tag the session here to bill it to this session.
-        headers: launchHeaders(sessionId),
+        // Direct calls skip before_provider_headers: preserve launch billing and native session attribution.
+        headers: launchHeaders(sessionId, agentSessionId),
       },
     )
     .result();
