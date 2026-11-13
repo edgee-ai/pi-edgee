@@ -118,6 +118,8 @@ export async function generateSessionName(
   agentSessionId: string,
   signal?: AbortSignal,
 ): Promise<string | undefined> {
+  // Hosts forked from pi (omp) have no direct streaming call; the prompt-derived name stays.
+  if (typeof ctx.modelRegistry.streamSimple !== "function") return undefined;
   const model = namingModel(ctx, settings);
   if (!model || !ctx.modelRegistry.hasConfiguredAuth(model)) return undefined;
   const message: UserMessage = {
