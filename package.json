@@ -1,6 +1,6 @@
 {
   "name": "pi-edgee",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Connects pi to the Edgee Agent Gateway: an edgee provider with /login, a footer statusline and session metadata. Also the statusline and session metadata companion for oh-my-pi (omp)",
   "license": "Apache-2.0",
   "repository": {
