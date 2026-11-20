@@ -24,7 +24,7 @@ Pick a model with `/model`, or pass one on the command line. Model ids match the
 
 | Feature | How |
 |---|---|
-| Provider | One `edgee` provider for every gateway model. `anthropic/*` models use Anthropic Messages; verified `openai/gpt-6.1-sol` and `openai/gpt-6-luna` use Responses; other models use Chat Completions. Context windows, prices and reasoning levels come from the Edgee catalog. The model list is cached in `~/.pi/agent/edgee/models.json`, so startup does not wait on the network. |
+| Provider | One `edgee` provider for every gateway model. `anthropic/*` models use Anthropic Messages; verified `openai/gpt-6.1-sol`, `openai/gpt-6.2-sol` and `openai/gpt-6-luna` use Responses; other models use Chat Completions. Context windows, prices and reasoning levels come from the Edgee catalog. The model list is cached in `~/.pi/agent/edgee/models.json`, so startup does not wait on the network. |
 | Session id | Every Edgee request carries `x-edgee-session-id` with pi's session id. A resumed pi session continues the same Edgee session, and `/new` starts a new one. |
 | Statusline | A `三 Edgee …` line under pi's footer with tokens, gateway cost, compression savings, request count and fallback state. |
 | Session name | An unnamed session takes the first line of its first prompt as its name right away, then a model writes a short title in the background and replaces it. The naming call goes through the gateway under the same session. `/edgee settings` turns this off (keeping the first-line name) or picks the naming model, which defaults to the current one. A name set with `--name` or `/name` is never overwritten. The plugin sends pi's session name to Edgee, including later changes. |
@@ -40,7 +40,7 @@ Session metadata goes to the Edgee session MCP endpoint. It needs `/login edgee`
 `anthropic/claude-opus-5-5` enables pi's `supportsMidConvoSystemMessages` and
 `supportsMidConvoToolChanges`. Other Claude models remain opted out.
 
-`openai/gpt-6.1-sol` and `openai/gpt-6-luna` use Responses with
+`openai/gpt-6.1-sol`, `openai/gpt-6.2-sol` and `openai/gpt-6-luna` use Responses with
 `supportsMidConvoSystemMessages`, `supportsAdditionalTools`, `supportsToolSearch`,
 and strict function schemas. Live Mantle probes verified later developer
 instructions, tool additions, same-name schema updates, and client-executed tool

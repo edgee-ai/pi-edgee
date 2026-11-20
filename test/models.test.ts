@@ -111,7 +111,7 @@ describe("buildModels", () => {
 	});
 
 	it("keeps the Responses prefix stable when verified OpenAI models load tools", async () => {
-		const ids = ["openai/gpt-6.1-sol", "openai/gpt-6-luna"];
+		const ids = ["openai/gpt-6.1-sol", "openai/gpt-6.2-sol", "openai/gpt-6-luna"];
 		const initial = [
 			{
 				role: "system" as const,
