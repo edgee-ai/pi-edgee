@@ -19,7 +19,16 @@ const FALLBACK_CONTEXT_WINDOW = 128_000;
 const FALLBACK_MAX_TOKENS = 16_384;
 
 /** Bump when generated transport or capability configuration changes. */
-const MODEL_CACHE_VERSION = 1;
+const MODEL_CACHE_VERSION = 2;
+
+/**
+ * OpenAI models served over Responses with native mid-conversation updates (later
+ * developer messages, tool additions, client-executed tool search). The gateway serves
+ * each one natively on Responses through Bedrock Mantle. Without these capabilities pi
+ * re-renders the system prompt and tool list, so every deferred-tool load rewrites the
+ * whole prompt cache.
+ */
+const RESPONSES_MODELS = new Set(["openai/gpt-6.1-sol", "openai/gpt-6.2-sol", "openai/gpt-6-luna"]);
 
 /** pi thinking level to gateway reasoning effort. */
 const THINKING_LEVELS = [
@@ -101,7 +110,7 @@ export function buildModels(
 		.map((id) => {
 			const meta = catalog.get(id);
 			const anthropic = id.startsWith("anthropic/");
-			const responses = id === "openai/gpt-6.1-sol" || id === "openai/gpt-6-luna";
+			const responses = RESPONSES_MODELS.has(id);
 			const input = (meta?.inputModalities ?? []).filter((m): m is "text" | "image" => m === "text" || m === "image");
 			const reasoning = (meta?.reasoningEfforts.length ?? 0) > 0;
 			const model: ProviderModelConfig = {
